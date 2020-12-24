@@ -38,6 +38,9 @@ func Viacep(c *http.Client) Fetcher {
 }
 
 func (c *Client) Search(ctx context.Context, cep string) (Address, error) {
+	if len(c.fetchers) == 0 {
+		return Address{}, errors.New("client has no fetcher")
+	}
 	var cancel context.CancelFunc
 	ctx, cancel = context.WithCancel(ctx)
 	defer cancel()
