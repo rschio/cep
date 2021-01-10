@@ -78,12 +78,12 @@ const (
 
 // Fetcher fetchs a cep.
 type Fetcher interface {
-	// Fetch searchs for the Address of cep. Fetch must be
+	// Fetch searches for the Address of cep. Fetch must be
 	// concurrent safe.
 	Fetch(ctx context.Context, cep string) (Address, error)
 }
 
-// Cliet can search for an address using a CEP. A client can have
+// Client can search for an address using a CEP. A client can have
 // many fetchers and use them concurrently to find the address.
 type Client struct {
 	fs []Fetcher
@@ -110,7 +110,7 @@ func (c *Client) fetchers() []Fetcher {
 	return DefaultFetchers
 }
 
-// Search searchs for the Address of CEP cep using client fetchers.
+// Search searches for the Address of CEP cep using client fetchers.
 // It returns the first result without error or wait all the errors and return
 // a zero Address and an error.
 func (c *Client) Search(ctx context.Context, cep string) (Address, error) {
@@ -204,7 +204,7 @@ func Canonicalize(cep string) (string, error) {
 		}
 		cep = cep[:p] + cep[p+1:]
 	}
-	// Only the first digit can be ommited, so the
+	// Only the first digit can be ommitted, so the
 	// length needs to be 7 or 8.
 	l := len(cep)
 	if !(7 <= l && l <= 8) {
