@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// Address is store address informations.
+// Address has address informations.
 type Address struct {
 	CEP          string `json:"cep"`
 	City         string `json:"city"`
