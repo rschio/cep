@@ -2,10 +2,10 @@ package cep
 
 import (
 	"encoding/json"
-	"errors"
 	"strings"
 )
 
+// Address is store address informations.
 type Address struct {
 	CEP          string `json:"cep"`
 	City         string `json:"city"`
@@ -14,18 +14,19 @@ type Address struct {
 	Street       string `json:"street"`
 }
 
+// UnmarshalJSON implements the json.Unmarshaler interface.
 func (a *Address) UnmarshalJSON(data []byte) error {
 	fields := make(map[string]string)
 	err := json.Unmarshal(data, &fields)
 	if err != nil {
-		return err
+		return &Error{Kind: UnmarshalErr, Err: err}
 	}
 	for name, val := range fields {
 		switch strings.ToLower(name) {
 		case "cep":
 			a.CEP, err = Canonicalize(val)
 			if err != nil {
-				return errors.New("got invalid CEP")
+				return &Error{Kind: UnmarshalErr, Err: err}
 			}
 		case "city", "localidade":
 			a.City = val

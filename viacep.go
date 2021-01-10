@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 )
 
@@ -14,24 +15,55 @@ type viacep struct {
 
 func (viacep) Name() string { return "viacep" }
 
+// Viacep returns a fetcher of viacep.
+func Viacep(c *http.Client) Fetcher {
+	if c == nil {
+		c = http.DefaultClient
+	}
+	return &viacep{client: c}
+}
+
+// Fetch implements the Fetcher interface.
 func (v *viacep) Fetch(ctx context.Context, cep string) (Address, error) {
 	url := fmt.Sprintf("https://viacep.com.br/ws/%s/json/unicode/", cep)
-	payload, err := getReq(ctx, v.client, url)
+	payload, err := v.req(ctx, url)
 	if err != nil {
-		return Address{}, fmt.Errorf("%s: %w", v.Name(), err)
+		return Address{}, &Error{
+			Kind: err.Kind,
+			Err:  fmt.Errorf("%s: %s", v.Name(), err.Error()),
+		}
 	}
-	addr, err := unmarshalViacep(payload)
+	addr, err := v.unmarshal(payload)
 	if err != nil {
-		return Address{}, fmt.Errorf("%s: %w", v.Name(), err)
+		return Address{}, &Error{
+			Kind: err.Kind,
+			Err:  fmt.Errorf("%s: %s", v.Name(), err.Error()),
+		}
 	}
 	return addr, nil
+}
+
+func (v *viacep) req(ctx context.Context, url string) ([]byte, *Error) {
+	rsp, err := request(ctx, v.client, url)
+	if err != nil {
+		return nil, err
+	}
+	defer rsp.Body.Close()
+	if rsp.StatusCode != 200 {
+		return nil, &Error{Kind: Other, Err: errors.New(rsp.Status)}
+	}
+	data, err1 := ioutil.ReadAll(rsp.Body)
+	if err != nil {
+		return nil, &Error{Kind: Other, Err: err1}
+	}
+	return data, nil
 }
 
 type viacepErr struct {
 	Erro bool
 }
 
-func unmarshalViacep(payload []byte) (Address, error) {
+func (viacep) unmarshal(payload []byte) (Address, *Error) {
 	addr := new(Address)
 	if err := json.Unmarshal(payload, addr); err != nil {
 		// Failed to unmarshal the payload. It can mean
@@ -41,9 +73,15 @@ func unmarshalViacep(payload []byte) (Address, error) {
 		vcepErr := &viacepErr{}
 		err1 := json.Unmarshal(payload, vcepErr)
 		if err1 != nil || vcepErr.Erro != true {
-			return Address{}, err
+			return Address{}, &Error{
+				Kind: UnmarshalErr,
+				Err:  err,
+			}
 		}
-		return Address{}, errors.New("CEP not found")
+		return Address{}, &Error{
+			Kind: CEPNotFound,
+			Err:  fmt.Errorf("CEP not found"),
+		}
 	}
 	return *addr, nil
 }

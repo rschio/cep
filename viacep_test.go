@@ -14,6 +14,7 @@ func TestFetchViacep(t *testing.T) {
 		want bool
 	}{
 		{"good", "01310000", true},
+		{"bad", "00000000", false},
 	}
 	ctx := context.Background()
 	v := &viacep{client: http.DefaultClient}

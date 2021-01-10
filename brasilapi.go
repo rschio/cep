@@ -3,10 +3,7 @@ package cep
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
-	"io/ioutil"
 	"net/http"
 )
 
@@ -16,51 +13,71 @@ type brasilapi struct {
 
 func (brasilapi) Name() string { return "brasilapi" }
 
+// Brasilapi returns a fetcher of brasilapi.
+func Brasilapi(c *http.Client) Fetcher {
+	if c == nil {
+		c = http.DefaultClient
+	}
+	return &brasilapi{client: c}
+}
+
+// Fetch implements the Fetcher interface.
 func (b *brasilapi) Fetch(ctx context.Context, cep string) (Address, error) {
 	url := fmt.Sprintf("https://brasilapi.com.br/api/cep/v1/%s", cep)
-	rc, err := makeReq(ctx, b.client, url)
+	rsp, err := request(ctx, b.client, url)
 	if err != nil {
-		return Address{}, fmt.Errorf("%s: %w", b.Name(), err)
+		return Address{}, &Error{
+			Kind: err.Kind,
+			Err:  fmt.Errorf("%s: %s", b.Name(), err.Error()),
+		}
 	}
-	defer rc.Close()
-
+	defer rsp.Body.Close()
+	if rsp.StatusCode != 200 {
+		// BrasilAPI returns 404 when the CEP was not found.
+		if rsp.StatusCode != 404 {
+			return Address{}, &Error{
+				Kind: Other,
+				Err:  fmt.Errorf("%s: %s", b.Name(), err.Error()),
+			}
+		}
+		// TODO: Check if the 404 is in fact a CEP not found.
+		// It can be a server problem...
+		return Address{}, &Error{
+			Kind: CEPNotFound,
+			Err:  fmt.Errorf("%s: CEP not found", b.Name()),
+		}
+	}
 	addr := new(Address)
-	if err = json.NewDecoder(rc).Decode(addr); err != nil {
-		return Address{}, fmt.Errorf("%s: %w", b.Name(), err)
+	if err1 := json.NewDecoder(rsp.Body).Decode(addr); err != nil {
+		return Address{}, &Error{
+			Kind: UnmarshalErr,
+			Err:  fmt.Errorf("%s: %s", b.Name(), err1.Error()),
+		}
 	}
 	return *addr, nil
 }
 
-func makeReq(ctx context.Context, c *http.Client, url string) (io.ReadCloser, error) {
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-	rsp, err := c.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	if rsp.StatusCode != 200 {
-		rsp.Body.Close()
-		return nil, errors.New(rsp.Status)
-	}
-	return rsp.Body, nil
+type timeouter interface {
+	Timeout() bool
 }
 
-func getReq(ctx context.Context, c *http.Client, url string) ([]byte, error) {
+func request(ctx context.Context, c *http.Client, url string) (*http.Response, *Error) {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return nil, err
+		return nil, &Error{
+			Kind: Other,
+			Err:  err,
+		}
 	}
 	rsp, err := c.Do(req)
 	if err != nil {
-		return nil, err
+		e := &Error{Err: err}
+		if terr, ok := err.(timeouter); ok && terr.Timeout() {
+			e.Kind = Timeout
+			return nil, e
+		}
+		e.Kind = Other
+		return nil, e
 	}
-	defer rsp.Body.Close()
-
-	if rsp.StatusCode != 200 {
-		return nil, errors.New(rsp.Status)
-	}
-
-	return ioutil.ReadAll(rsp.Body)
+	return rsp, nil
 }

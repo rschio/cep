@@ -2,10 +2,55 @@ package cep
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"reflect"
 	"testing"
 )
+
+type canceler struct{}
+type notfounder struct{}
+
+func (notfounder) Fetch(ctx context.Context, cep string) (Address, error) {
+	return Address{}, &Error{Kind: CEPNotFound, Err: errors.New("CEP not found")}
+}
+
+func (canceler) Fetch(_ context.Context, cep string) (Address, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	return Address{}, &Error{Kind: ContextCanceled, Err: ctx.Err()}
+}
+
+func TestSearchErr(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	cctx, cancel := context.WithCancel(ctx)
+	cancel()
+	tctx, tcancel := context.WithTimeout(ctx, -1)
+	defer tcancel()
+	tests := []struct {
+		name     string
+		ctx      context.Context
+		cep      string
+		fetchers []Fetcher
+		err      error
+	}{
+		{"invalid", ctx, "000", nil, &Error{Kind: InvalidCEP}},
+		{"not found", ctx, "00000000", nil, &Error{Kind: CEPNotFound}},
+		{"canceled", cctx, "01310000", nil, &Error{Kind: ContextCanceled}},
+		{"timeout", tctx, "01310000", nil, &Error{Kind: Timeout}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			c := NewClient(tt.fetchers)
+			_, err := c.Search(tt.ctx, tt.cep)
+			if !errors.Is(err, tt.err) {
+				t.Fatalf("got %v, want: %v", err, tt.err)
+			}
+		})
+	}
+
+}
 
 func TestSearch(t *testing.T) {
 	t.Parallel()
