@@ -91,7 +91,7 @@ type Client struct {
 
 // NewClient returns a new client with the provided
 // fetchers, if no fetcher was provided it uses the
-// DefalutFetchers.
+// DefaultFetchers.
 func NewClient(fetchers []Fetcher) *Client {
 	return &Client{fs: fetchers}
 }
