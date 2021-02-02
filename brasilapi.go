@@ -48,7 +48,7 @@ func (b *brasilapi) Fetch(ctx context.Context, cep string) (Address, error) {
 		}
 	}
 	addr := new(Address)
-	if err1 := json.NewDecoder(rsp.Body).Decode(addr); err != nil {
+	if err1 := json.NewDecoder(rsp.Body).Decode(addr); err1 != nil {
 		return Address{}, &Error{
 			Kind: UnmarshalErr,
 			Err:  fmt.Errorf("%s: %s", b.Name(), err1.Error()),
